@@ -61,13 +61,13 @@ var Cloud = (function () {
 
   function subscribe(spaceCode) {
     unsubscribe();
-    var state = { categories: null, portfolioValue: null, investmentGoalPercent: null, transactions: {} };
+    var state = { categories: null, portfolioValues: null, investmentGoalPercent: null, transactions: {} };
 
     function emit() {
       if (!onDataCallback || state.categories === null) return;
       onDataCallback({
         categories: state.categories,
-        portfolioValue: state.portfolioValue,
+        portfolioValues: state.portfolioValues,
         investmentGoalPercent: state.investmentGoalPercent,
         transactions: Object.keys(state.transactions).map(function (k) { return state.transactions[k]; })
       });
@@ -78,7 +78,7 @@ var Cloud = (function () {
     unsubDoc = spaceRef.onSnapshot(function (doc) {
       var d = doc.data() || {};
       state.categories = d.categories || { income: [], expense: [], investment: [] };
-      state.portfolioValue = d.portfolioValue === undefined ? null : d.portfolioValue;
+      state.portfolioValues = d.portfolioValues || {};
       state.investmentGoalPercent = d.investmentGoalPercent || 20;
       emit();
     }, function (err) { if (toastFn) toastFn("Cloud chyba: " + err.message); });
@@ -96,7 +96,7 @@ var Cloud = (function () {
     var spaceRef = db.collection("spaces").doc(spaceCode);
     var settingsWrite = spaceRef.set({
       categories: localDB.categories,
-      portfolioValue: localDB.portfolioValue != null ? localDB.portfolioValue : null,
+      portfolioValues: localDB.portfolioValues || {},
       investmentGoalPercent: localDB.investmentGoalPercent || 20,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });

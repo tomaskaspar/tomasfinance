@@ -16,7 +16,7 @@
         expense: ["Bydlení", "Jídlo", "Doprava", "Zdraví", "Zábava", "Oblečení", "Předplatné", "Ostatní"],
         investment: ["Akcie/ETF", "Kryptoměny", "Spoření/rezerva", "Nemovitosti", "Ostatní"]
       },
-      portfolioValue: null,
+      portfolioValues: {},
       investmentGoalPercent: 20
     };
   }
@@ -127,6 +127,12 @@
 
   function totalInvestedAllTime() {
     return DB.transactions.filter(function (t) { return t.type === "investment"; }).reduce(function (s, t) { return s + t.amount; }, 0);
+  }
+
+  function investedCategories() {
+    var map = {};
+    DB.transactions.forEach(function (t) { if (t.type === "investment") map[t.category] = (map[t.category] || 0) + t.amount; });
+    return Object.keys(map).sort(function (a, b) { return map[b] - map[a]; }).map(function (c) { return { category: c, invested: map[c] }; });
   }
 
   // ---------- UI state ----------
@@ -266,18 +272,46 @@
   }
 
   function renderPortfolioCard() {
-    var invested = totalInvestedAllTime();
-    document.getElementById("dash-portfolio-invested").textContent = fmtMoney(invested);
-    var input = document.getElementById("dash-portfolio-value");
-    if (document.activeElement !== input) input.value = DB.portfolioValue != null ? DB.portfolioValue : "";
-    var out = document.getElementById("dash-portfolio-result");
-    if (DB.portfolioValue != null && DB.portfolioValue !== "") {
-      var profit = DB.portfolioValue - invested;
-      var pct = invested > 0 ? (profit / invested * 100) : 0;
-      out.innerHTML = (profit >= 0 ? "Zisk: " : "Ztráta: ") + '<b style="color:' + (profit >= 0 ? "var(--income)" : "var(--waste)") + '">' + fmtMoney(Math.abs(profit)) + " (" + fmtPct(Math.abs(pct)) + ")</b>";
-    } else {
-      out.innerHTML = '<span style="color:var(--text-dim)">Zadej aktuální hodnotu portfolia pro výpočet zisku/ztráty</span>';
+    var container = document.getElementById("dash-portfolio-rows");
+    var cats = investedCategories();
+    if (cats.length === 0) {
+      container.innerHTML = '<div class="empty-state">Zatím žádné investice — přidej první v záložce Transakce</div>';
+      return;
     }
+
+    var totalInvested = 0, totalCurrent = 0, anyValueEntered = false;
+    var rows = cats.map(function (c) {
+      totalInvested += c.invested;
+      var val = DB.portfolioValues[c.category];
+      var hasVal = val != null && val !== "";
+      if (hasVal) { totalCurrent += val; anyValueEntered = true; } else { totalCurrent += c.invested; }
+      var profitHtml;
+      if (hasVal) {
+        var profit = val - c.invested;
+        var pct = c.invested > 0 ? (profit / c.invested * 100) : 0;
+        profitHtml = '<span style="color:' + (profit >= 0 ? "var(--income)" : "var(--waste)") + ';font-weight:700;">' + (profit >= 0 ? "+" : "") + fmtMoney(profit) + " (" + fmtPct(Math.abs(pct)) + ")</span>";
+      } else {
+        profitHtml = '<span style="color:var(--text-dim);font-size:12px;">zadej hodnotu</span>';
+      }
+      return '<div class="score-item" style="margin-bottom:10px;">' +
+        '<div class="top"><span class="name">' + escapeHtml(c.category) + '</span>' + profitHtml + '</div>' +
+        '<div class="field-row" style="grid-template-columns:1fr 1fr;">' +
+        '<div><label>Vloženo</label><div style="font-weight:700;">' + fmtMoney(c.invested) + '</div></div>' +
+        '<div><label>Aktuální hodnota</label><input type="number" class="portfolio-cat-input" data-category="' + escapeHtml(c.category) + '" placeholder="např. ' + Math.round(c.invested) + '" step="0.01" min="0" value="' + (hasVal ? val : "") + '"></div>' +
+        '</div>' +
+        '</div>';
+    }).join("");
+
+    var totalProfit = totalCurrent - totalInvested;
+    var totalPct = totalInvested > 0 ? (totalProfit / totalInvested * 100) : 0;
+    var totalRow = '<div class="score-item" style="border-color:var(--accent);">' +
+      '<div class="top"><span class="name" style="font-weight:700;">Celkem</span>' +
+      (anyValueEntered
+        ? '<span style="color:' + (totalProfit >= 0 ? "var(--income)" : "var(--waste)") + ';font-weight:800;">' + (totalProfit >= 0 ? "Zisk: " : "Ztráta: ") + fmtMoney(Math.abs(totalProfit)) + " (" + fmtPct(Math.abs(totalPct)) + ")</span>"
+        : '<span style="color:var(--text-dim);font-size:12px;">zadej alespoň jednu hodnotu</span>') +
+      "</div><div style=\"font-size:12.5px;color:var(--text-dim);margin-top:4px;\">Celkem vloženo: " + fmtMoney(totalInvested) + "</div></div>";
+
+    container.innerHTML = rows + totalRow;
   }
 
   function escapeHtml(s) {
@@ -481,7 +515,6 @@
         return "<li><span>" + escapeHtml(c) + '</span><button class="icon-btn del" data-action="delete-cat" data-type="' + type + '" data-cat="' + escapeHtml(c) + '" title="Smazat">×</button></li>';
       }).join("");
     });
-    document.getElementById("set-portfolio-value").value = DB.portfolioValue != null ? DB.portfolioValue : "";
     document.getElementById("set-invest-goal").value = DB.investmentGoalPercent;
   }
 
@@ -539,7 +572,7 @@
 
   function handleCloudData(data) {
     DB.categories = data.categories || DB.categories;
-    DB.portfolioValue = data.portfolioValue;
+    DB.portfolioValues = data.portfolioValues || {};
     DB.investmentGoalPercent = data.investmentGoalPercent || DB.investmentGoalPercent;
     DB.transactions = data.transactions || [];
     saveDB();
@@ -621,10 +654,14 @@
       ui.dashboardMonth = e.target.value;
       renderDashboard();
     });
-    document.getElementById("dash-portfolio-value").addEventListener("change", function (e) {
-      DB.portfolioValue = e.target.value === "" ? null : parseFloat(e.target.value);
+    document.getElementById("dash-portfolio-rows").addEventListener("change", function (e) {
+      var input = e.target.closest(".portfolio-cat-input");
+      if (!input) return;
+      var cat = input.dataset.category;
+      if (input.value === "") delete DB.portfolioValues[cat];
+      else DB.portfolioValues[cat] = parseFloat(input.value);
       saveDB();
-      if (Cloud.isConnected()) Cloud.saveSettings({ portfolioValue: DB.portfolioValue }).catch(cloudErr);
+      if (Cloud.isConnected()) Cloud.saveSettings({ portfolioValues: DB.portfolioValues }).catch(cloudErr);
       renderPortfolioCard();
     });
 
