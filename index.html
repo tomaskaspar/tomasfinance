@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TomasFinance — Přehled financí</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark">TF</div>
+      <div>
+        <h1>TomasFinance</h1>
+        <p>Příjmy, výdaje a investice pod kontrolou</p>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="dashboard">📊 Přehled</button>
+      <button class="tab-btn" data-tab="transactions">➕ Transakce</button>
+      <button class="tab-btn" data-tab="compare">📅 Porovnání měsíců</button>
+      <button class="tab-btn" data-tab="settings">⚙️ Nastavení</button>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="tab-panel active">
+      <div class="filters" style="margin-bottom:18px;">
+        <div class="field">
+          <label>Měsíc</label>
+          <select id="dash-month"></select>
+        </div>
+      </div>
+
+      <div class="grid grid-cards" id="dash-stats" style="margin-bottom:16px;"></div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Finanční skóre</h3>
+        <div id="dash-score"></div>
+      </div>
+
+      <div class="grid grid-2" style="margin-bottom:16px;">
+        <div class="card">
+          <h3>Výdaje podle kategorie</h3>
+          <div class="chart-flex">
+            <div class="donut-wrap">
+              <div id="dash-donut-chart"></div>
+              <div class="donut-center" id="dash-donut-center"></div>
+            </div>
+            <div class="chart-legend" id="dash-donut-legend" style="flex:1;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Příjmy / Výdaje / Investice (posl. 6 měsíců)</h3>
+          <div id="dash-bar-chart"></div>
+          <div class="chart-legend">
+            <div class="item"><span class="dot" style="background:var(--income)"></span>Příjmy</div>
+            <div class="item"><span class="dot" style="background:var(--expense)"></span>Výdaje</div>
+            <div class="item"><span class="dot" style="background:var(--investment)"></span>Investice</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <h3>Kumulativní investice v čase</h3>
+          <div id="dash-line-chart"></div>
+        </div>
+        <div class="card">
+          <h3>Portfolio</h3>
+          <div class="field">
+            <label>Celkem vloženo (od začátku)</label>
+            <div id="dash-portfolio-invested" style="font-size:20px;font-weight:800;"></div>
+          </div>
+          <div class="field">
+            <label>Aktuální hodnota portfolia (nepovinné)</label>
+            <input type="number" id="dash-portfolio-value" placeholder="např. 150000" step="0.01" min="0">
+          </div>
+          <div id="dash-portfolio-result" style="font-size:14px;margin-top:8px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRANSACTIONS -->
+    <section id="tab-transactions" class="tab-panel">
+      <div class="card" style="margin-bottom:16px;">
+        <h3><span id="tx-form-title">Přidat transakci</span></h3>
+        <form id="tx-form" data-type="expense">
+          <div class="field">
+            <label>Typ</label>
+            <div class="type-toggle">
+              <button type="button" data-type="income">Příjem</button>
+              <button type="button" data-type="expense">Výdaj</button>
+              <button type="button" data-type="investment">Investice</button>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Datum</label>
+              <input type="date" id="f-date" required>
+            </div>
+            <div class="field">
+              <label>Kategorie</label>
+              <select id="f-category"></select>
+            </div>
+            <div class="field">
+              <label>Částka (Kč)</label>
+              <input type="number" id="f-amount" placeholder="0" step="0.01" min="0.01" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>Poznámka (nepovinné)</label>
+            <input type="text" id="f-note" placeholder="např. nákup potravin v Lidlu">
+          </div>
+          <div class="field" id="f-essential-wrap" data-val="1">
+            <label>Klasifikace výdaje</label>
+            <div class="essential-toggle">
+              <button type="button" data-val="1">✅ Nutný výdaj</button>
+              <button type="button" data-val="0">🔥 Zbytečnost</button>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button type="submit" class="btn" id="tx-submit-btn">Přidat transakci</button>
+            <button type="button" class="btn secondary" id="tx-cancel-edit" style="display:none;">Zrušit úpravu</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Filtry</h3>
+        <div class="filters">
+          <div class="field">
+            <label>Měsíc</label>
+            <select id="flt-month"></select>
+          </div>
+          <div class="field grow">
+            <label>Kategorie</label>
+            <select id="flt-category"></select>
+          </div>
+          <div class="field">
+            <label>Klasifikace</label>
+            <select id="flt-essential">
+              <option value="all">Vše</option>
+              <option value="essential">Jen nutné</option>
+              <option value="waste">Jen zbytečnosti</option>
+            </select>
+          </div>
+          <div class="field grow">
+            <label>Hledat</label>
+            <input type="text" id="flt-search" placeholder="poznámka nebo kategorie...">
+          </div>
+          <div class="field">
+            <label>Typ</label>
+            <div class="btn-row" style="margin-top:0;">
+              <button type="button" class="btn secondary small" id="chip-income">Příjem</button>
+              <button type="button" class="btn secondary small" id="chip-expense">Výdaj</button>
+              <button type="button" class="btn secondary small" id="chip-investment">Investice</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button type="button" class="btn secondary small" id="flt-reset">Reset filtrů</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Seznam transakcí</h3>
+        <div id="tx-table-container"></div>
+      </div>
+    </section>
+
+    <!-- COMPARE -->
+    <section id="tab-compare" class="tab-panel">
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Vyber měsíce k porovnání</h3>
+        <div class="btn-row" id="cmp-quick" style="margin-bottom:12px;">
+          <button type="button" class="btn secondary small" data-n="3">Poslední 3</button>
+          <button type="button" class="btn secondary small" data-n="6">Poslední 6</button>
+          <button type="button" class="btn secondary small" data-n="12">Poslední 12</button>
+          <button type="button" class="btn secondary small" data-n="all">Vše</button>
+        </div>
+        <div class="month-picker-list" id="cmp-chips"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Grafické porovnání</h3>
+        <div id="cmp-bar-chart"></div>
+        <div class="chart-legend">
+          <div class="item"><span class="dot" style="background:var(--income)"></span>Příjmy</div>
+          <div class="item"><span class="dot" style="background:var(--expense)"></span>Výdaje</div>
+          <div class="item"><span class="dot" style="background:var(--investment)"></span>Investice</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Tabulkové porovnání</h3>
+        <div id="cmp-table-container"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab-panel">
+      <div class="card" style="margin-bottom:16px;" id="cloud-card">
+        <h3>☁️ Synchronizace mezi zařízeními</h3>
+        <div id="cloud-status"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Cíle a portfolio</h3>
+        <div class="field-row">
+          <div class="field">
+            <label>Cílová míra investování (% z příjmů)</label>
+            <input type="number" id="set-invest-goal" min="0" max="100" step="1">
+          </div>
+          <div class="field">
+            <label>Aktuální hodnota portfolia</label>
+            <input type="number" id="set-portfolio-value" step="0.01" min="0" disabled title="Uprav v záložce Přehled">
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;" id="cat-manager">
+        <h3>Kategorie</h3>
+        <div class="cat-manager">
+          <div>
+            <strong style="color:var(--income);font-size:13px;">Příjmy</strong>
+            <ul class="cat-list" id="cat-list-income"></ul>
+            <div class="cat-add-row">
+              <input type="text" id="cat-add-input-income" placeholder="nová kategorie...">
+              <button class="btn secondary small" id="cat-add-btn-income">Přidat</button>
+            </div>
+          </div>
+          <div>
+            <strong style="color:var(--expense);font-size:13px;">Výdaje</strong>
+            <ul class="cat-list" id="cat-list-expense"></ul>
+            <div class="cat-add-row">
+              <input type="text" id="cat-add-input-expense" placeholder="nová kategorie...">
+              <button class="btn secondary small" id="cat-add-btn-expense">Přidat</button>
+            </div>
+          </div>
+          <div>
+            <strong style="color:var(--investment);font-size:13px;">Investice</strong>
+            <ul class="cat-list" id="cat-list-investment"></ul>
+            <div class="cat-add-row">
+              <input type="text" id="cat-add-input-investment" placeholder="nová kategorie...">
+              <button class="btn secondary small" id="cat-add-btn-investment">Přidat</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Data</h3>
+        <p style="font-size:13px;color:var(--text-dim);">Všechna data zůstávají pouze v tomto prohlížeči. Doporučujeme čas od času udělat zálohu.</p>
+        <div class="btn-row">
+          <button class="btn secondary" id="btn-export">⬇ Exportovat zálohu (JSON)</button>
+          <label class="file-input-label">⬆ Importovat zálohu<input type="file" id="import-file" accept="application/json"></label>
+          <button class="btn danger" id="btn-reset">🗑 Smazat všechna data</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="hint">Data se ukládají pouze lokálně v tomto prohlížeči (localStorage) — nikam se neodesílají.</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="cloud.js"></script>
+<script src="charts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
