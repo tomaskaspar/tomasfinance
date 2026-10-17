@@ -485,7 +485,7 @@
   function processImport(text, opts) {
     var res = Importer.parse(text, opts);
     var ctx = importCtx();
-    imp.info = { skipped: res.skipped, mode: res.mode };
+    imp.info = { skipped: res.skipped, mode: res.mode, check: res.check };
     imp.rows = res.rows.map(function (r) {
       var c = Importer.categorize(r.desc, r.amount, ctx);
       var abs = Math.abs(r.amount);
@@ -514,6 +514,21 @@
     el.innerHTML = n
       ? 'Naučená pravidla z tvých oprav: ' + n + ' · <a href="#" data-act="clear-learned" style="color:var(--accent);">smazat</a>'
       : "Když v náhledu něco opravíš, appka si to zapamatuje a příště to rovnou zařadí správně.";
+  }
+
+  function importCheckHtml() {
+    var c = imp.info && imp.info.check;
+    if (!c) return "";
+    function k(n) { return n.toLocaleString("cs-CZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " Kč"; }
+    var e = c.expected, a = c.actual;
+    var base = "padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:10px;";
+    if (c.ok) {
+      return '<div style="' + base + 'background:var(--income-bg);color:var(--income);">✓ Kontrola proti výpisu sedí: ' +
+        a.nCredit + " příjmových a " + a.nDebit + " výdajových položek, příjmy " + k(a.income) + ", výdaje " + k(a.expense) + ".</div>";
+    }
+    return '<div style="' + base + 'background:var(--expense-bg);color:var(--waste);">⚠ Součty nesedí s výpisem. Výpis uvádí ' +
+      e.nCredit + " příjmů (" + k(e.income) + ") a " + e.nDebit + " výdajů (" + k(e.expense) + "), appka našla " +
+      a.nCredit + " příjmů (" + k(a.income) + ") a " + a.nDebit + " výdajů (" + k(a.expense) + "). Zkontroluj, jestli nechybí nějaká položka.</div>";
   }
 
   function importSummaryHtml() {
@@ -564,6 +579,7 @@
     }).join("");
 
     box.innerHTML =
+      importCheckHtml() +
       '<div style="font-size:13px;margin-bottom:10px;" id="imp-summary">' + importSummaryHtml() + "</div>" +
       '<div class="btn-row" style="margin:0 0 10px;align-items:center;">' +
       '<button type="button" class="btn secondary small" data-act="sel-all">Vybrat vše</button>' +

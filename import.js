@@ -208,11 +208,102 @@ var Importer = (function () {
     return { rows: rows, skipped: skipped };
   }
 
+  // ---------- ČSOB statement (dates without year, details on following lines) ----------
+
+  function isCsob(lines) {
+    var hasHeader = lines.some(function (l) { return norm(l).indexOf("oznaceni platby") !== -1; });
+    return hasHeader && lines.some(function (l) { return /^\d{2}\.\d{2}\.\s+\S/.test(l); });
+  }
+
+  function parseCsob(lines, text) {
+    var t = norm(text);
+    var per = t.match(/obdobi:\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})\s*[-–]\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+    var rok = t.match(/rok\/c\.\s*vypisu:\s*(\d{4})/);
+    function yearFor(mm) {
+      if (per) return +per[3] === +per[6] ? +per[3] : (mm >= +per[2] ? +per[3] : +per[6]);
+      if (rok) return +rok[1];
+      return new Date().getFullYear();
+    }
+
+    var rows = [], skipped = 0, cur = null, halt = false;
+    var NOISE = /^(VÝPIS Z ÚČTU|Československá obchodní banka|zapsaná v obchodním|Prosíme Vás|Pokud při zúčtování|Vklad na tomto)/i;
+
+    function flush() {
+      if (!cur) return;
+      var parts = [];
+      if (cur.name) parts.push(cur.name);
+      if (cur.place) parts.push(cur.place);
+      cur.msgs.forEach(function (m) { parts.push(m); });
+      if (!cur.name && !cur.place && cur.account) parts.push(cur.account);
+      if (cur.orig) parts.push("(" + cur.orig + ")");
+      parts.push(cur.label);
+      rows.push({ date: cur.date, amount: cur.amount, desc: parts.join(" · "), currency: "" });
+      cur = null;
+    }
+
+    lines.forEach(function (line) {
+      var m = line.match(/^(\d{2})\.(\d{2})\.\s+(.*)$/);
+      if (m) {
+        flush();
+        halt = false;
+        var cells = line.split("\t").map(function (c) { return c.trim(); });
+        var n = cells.length;
+        var amount = n >= 4 ? parseAmount(cells[n - 2]) : null;
+        var bal = n >= 4 ? parseAmount(cells[n - 1]) : null;
+        var date = parseDate(m[1] + "." + m[2] + "." + yearFor(+m[2]));
+        if (amount == null || bal == null || amount === 0 || !date) { skipped++; return; }
+        cur = {
+          date: date, amount: amount,
+          label: cells[0].replace(/^\d{2}\.\d{2}\.\s+/, ""),
+          name: cells.slice(1, n - 3).join(" "),
+          place: "", msgs: [], account: "", orig: ""
+        };
+        return;
+      }
+      if (!cur) return;
+      var s = line.trim();
+      if (NOISE.test(s)) { halt = true; return; }
+      if (halt) return;
+      if (/^Místo:/i.test(s)) { cur.place = s.split("\t")[0].replace(/^Místo:\s*/i, "").trim(); return; }
+      if (/^Částka:/i.test(s)) {
+        var mo = s.match(/Částka:\s*([\d\s.,]+?)\s*([A-Z]{3})\b/);
+        if (mo && mo[2] !== "CZK") cur.orig = mo[1].trim() + " " + mo[2];
+        return;
+      }
+      if (/^\d[\d-]*\/\d{4}\b/.test(s)) { cur.account = s.split("\t")[0]; return; }
+      if (/^\d{6,}\t\d{4}\t\d+/.test(s) || /^\d+$/.test(s)) return;
+      cur.msgs.push(s.replace(/\t/g, " "));
+    });
+    flush();
+
+    var res = { rows: rows, skipped: skipped, mode: "výpis ČSOB" };
+    var mc = t.match(/pocet kreditnich polozek:\s*(\d+)\s+celkove prijmy:\s*([\d  .,]+)/);
+    var md = t.match(/pocet debetnich polozek:\s*(\d+)\s+celkove vydaje:\s*([\d  .,]+)/);
+    if (mc && md) {
+      var actual = { nCredit: 0, income: 0, nDebit: 0, expense: 0 };
+      rows.forEach(function (r) {
+        if (r.amount > 0) { actual.nCredit++; actual.income += r.amount; }
+        else { actual.nDebit++; actual.expense += -r.amount; }
+      });
+      var expected = { nCredit: +mc[1], income: parseAmount(mc[2]), nDebit: +md[1], expense: parseAmount(md[2]) };
+      res.check = {
+        expected: expected, actual: actual,
+        ok: expected.nCredit === actual.nCredit && expected.nDebit === actual.nDebit &&
+          Math.abs(expected.income - actual.income) < 0.01 && Math.abs(expected.expense - actual.expense) < 0.01
+      };
+    }
+    return res;
+  }
+
   function parse(text, opts) {
     text = String(text || "").replace(/^﻿/, "").replace(/\r\n?/g, "\n");
     var lines = text.split("\n").map(function (l) { return l.replace(/\s+$/, ""); }).filter(function (l) { return l.trim() !== ""; });
     var empty = { rows: [], skipped: 0, mode: "" };
     if (!lines.length) return empty;
+    if (isCsob(lines)) {
+      var cr = parseCsob(lines, text);
+      if (cr.rows.length) return cr;
+    }
     var delims = ["\t", ";", "|", ","];
 
     for (var d = 0; d < delims.length; d++) {
@@ -310,19 +401,19 @@ var Importer = (function () {
   }
 
   var EXPENSE_RULES = compile([
-    ["Předplatné", ["netflix", "spotify", "youtube", "google one", "google storage", "google *", "apple.com/bill", "itunes", "icloud", "disney", "hbo", "max.com", "prime video", "amazon prime", "audible", "openai", "chatgpt", "anthropic", "claude.ai", "github", "dropbox", "microsoft", "adobe", "patreon", "skyshowtime", "voyo", "oneplay", "tidal", "deezer", "canva", "notion", "duolingo"]],
-    ["Jídlo", ["lidl", "albert", "billa", "kaufland", "tesco", "penny", "globus", "coop", "potraviny", "rohlik", "kosik", "mcdonald", "kfc", "burger king", "restaurace", "pizz", "bufet", "pekarna", "pekarstvi", "cukrarna", "starbucks", "costa coffee", "cafe", "kavarna", "wolt", "foodora", "bolt food", "zabka", "hruska", "tamda", "makro", "jip", "delikatesy", "bistro", "sushi", "kebab", "dominos", "subway", "lahudky", "vinotek"]],
-    ["Doprava", ["benzina", "shell", "omv", "mol", "eurooil", "orlen", "tank", "parkov", "parking", "mhd", "dpp", "dpmb", "dpo", "idos", "regiojet", "leo express", "ceske drahy", "cd.cz", "uber", "bolt", "lime", "tier", "nextbike", "mytne", "dalnicni", "stk", "autoskola", "autodoplnky", "pneu", "taxi", "liftago", "flixbus", "ryanair", "wizz", "letenka", "letiste", "jizdenka", "litacka"]],
+    ["Předplatné", ["netflix", "spotify", "youtube", "google one", "google storage", "google *", "apple.com/bill", "itunes", "icloud", "disney", "hbo", "max.com", "prime video", "amazon prime", "audible", "openai", "chatgpt", "anthropic", "claude.ai", "github", "dropbox", "microsoft", "adobe", "patreon", "skyshowtime", "voyo", "oneplay", "tidal", "deezer", "canva", "notion", "duolingo", "predplatne"]],
+    ["Jídlo", ["lidl", "albert", "billa", "kaufland", "tesco", "penny", "globus", "coop", "potraviny", "rohlik", "kosik", "mcdonald", "kfc", "burger king", "restaurace", "pizz", "bufet", "pekarna", "pekarstvi", "cukrarna", "starbucks", "costa coffee", "cafe", "kavarna", "wolt", "foodora", "bolt food", "zabka", "hruska", "tamda", "makro", "jip", "delikatesy", "bistro", "sushi", "kebab", "dominos", "subway", "lahudky", "vinotek", "popeyes", "bageterie", "vending", "sbx", "delikomat", "restia", "pikolik", "kramek"]],
+    ["Doprava", ["benzina", "shell", "omv", "mol", "eurooil", "orlen", "tank", "parkov", "parking", "mhd", "dpp", "dpmb", "dpo", "idos", "regiojet", "leo express", "ceske drahy", "cd.cz", "uber", "bolt", "lime", "tier", "nextbike", "mytne", "dalnicni", "stk", "autoskola", "autodoplnky", "pneu", "taxi", "liftago", "flixbus", "ryanair", "wizz", "letenka", "letiste", "jizdenka", "litacka", "renfe", "csad", "avanza", "malaguena"]],
     ["Bydlení", ["najem", "najemne", "elektrina", "cez", "eon", "e.on", "innogy", "prazska energetika", "plyn", "vodarna", "vodovod", "svj", "fond oprav", "internet", "upc", "ikea", "hornbach", "obi", "jysk", "bauhaus", "pojisteni domacnosti", "odpady", "teplo"]],
     ["Zdraví", ["lekarna", "benu", "dr.max", "dr max", "drmax", "pilulka", "poliklinika", "lekar", "zubar", "nemocnice", "ordinace", "fitness", "fitko", "gym", "multisport", "holmes place", "repsport", "optika", "vzp", "kosmetika", "masaz", "fyzio"]],
-    ["Zábava", ["kino", "cinema", "cinestar", "divadlo", "steam", "playstation", "xbox", "nintendo", "epic games", "ticketportal", "goout", "ticketmaster", "bowling", "sazka", "tipsport", "fortuna", "chance", "pub", "klub", "bar", "hospoda", "vinarna", "pivnice", "koncert", "festival", "twitch", "aquapark", "zoo", "muzeum"]],
-    ["Oblečení", ["zalando", "h&m", "hm.com", "zara", "reserved", "c&a", "about you", "answear", "decathlon", "nike", "adidas", "deichmann", "ccc", "sinsay", "primark", "new yorker", "pull&bear", "bershka", "footshop", "vinted", "lindex", "cropp"]]
+    ["Zábava", ["kino", "cinema", "cinestar", "divadlo", "steam", "playstation", "xbox", "nintendo", "epic games", "ticketportal", "goout", "ticketmaster", "bowling", "sazka", "tipsport", "fortuna", "chance", "pub", "klub", "bar", "hospoda", "vinarna", "pivnice", "koncert", "festival", "twitch", "aquapark", "zoo", "muzeum", "herna", "gapagroup", "casino", "kasino"]],
+    ["Oblečení", ["zalando", "h&m", "hm.com", "zara", "reserved", "c&a", "about you", "answear", "decathlon", "nike", "adidas", "deichmann", "ccc", "sinsay", "primark", "new yorker", "pull&bear", "bershka", "footshop", "vinted", "lindex", "cropp", "pepco"]]
   ]);
 
   var INCOME_RULES = compile([
-    ["Mzda", ["vyplata", "mzda", "salary", "zamestnavatel", "plat", "wage", "payroll"]],
-    ["Dary", ["dar", "darek", "gift", "kapesne", "narozeniny", "vanoce"]],
-    ["Vedlejší příjem", ["wolt", "bolt", "foodora", "uber", "airbnb", "vinted", "bazos", "sbazar", "fiverr", "upwork", "faktura", "brigada", "odmena"]]
+    ["Mzda", ["vyplata", "mzda", "salary", "zamestnavatel", "plat", "wage", "payroll", "wolt", "foodora"]],
+    ["Dary", ["dar", "darek", "gift", "kapesne", "narozenin", "vanoce", "babi", "deda"]],
+    ["Vedlejší příjem", ["bolt", "uber", "airbnb", "vinted", "bazos", "sbazar", "fiverr", "upwork", "faktura", "brigada", "odmena"]]
   ]);
 
   var INVEST_RULES = compile([
@@ -331,11 +422,13 @@ var Importer = (function () {
     ["Spoření/rezerva", ["sporic", "stavebni sporeni", "penzijni", "penzijko", "conseq", "nn penzijni", "amundi", "pension"]]
   ]);
 
-  var TRANSFER_RE = /vlastni (ucet|uc)|mezi vlastnimi|prevod mezi|own account|internal transfer|na sporici|ze sporiciho|sporici ucet/;
+  var TRANSFER_RE = /vlastni (ucet|uc)|mezi vlastnimi|prevod mezi|own account|internal transfer|na sporici|ze sporiciho|sporici ucet|revolut\*\*/;
 
   var STOPWORDS = ["platba", "kartou", "karta", "nakup", "transakce", "prevod", "uhrada", "odchozi", "prichozi", "bezhotovostni", "domaci", "platebni", "trvaly", "prikaz", "inkaso", "pos", "internetova", "praha", "brno", "ostrava", "plzen", "czk", "cz", "czech", "republic", "pro", "bez", "datum"];
 
   function keyOf(desc) {
+    var acc = String(desc || "").match(/\d[\d-]*\/\d{4}\b/);
+    if (acc) return "ucet " + acc[0];
     var words = norm(desc).replace(/[^a-z\s]/g, " ").split(/\s+/).filter(function (w) {
       return w.length >= 3 && STOPWORDS.indexOf(w) === -1;
     });
@@ -384,7 +477,9 @@ var Importer = (function () {
   }
 
   function cleanNote(desc) {
-    return String(desc || "").replace(/\d{4}\s?\*+\s?\d{4}/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
+    return String(desc || "").replace(/\d{4}\s?\*+\s?\d{4}/g, "")
+      .replace(/\s·\s(Transakce platební kartou|Příchozí úhrada( okamžitá)?|Odchozí úhrada( okamžitá)?)$/, "")
+      .replace(/\s+/g, " ").trim().slice(0, 120);
   }
 
   return { parse: parse, pdfToText: pdfToText, parseDate: parseDate, parseAmount: parseAmount, categorize: categorize, suggestFor: suggestFor, keyOf: keyOf, cleanNote: cleanNote };
