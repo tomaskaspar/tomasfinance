@@ -122,6 +122,19 @@
         </form>
       </div>
 
+      <div class="card" style="margin-bottom:16px;" id="import-card">
+        <h3>📥 Import z výpisu účtu</h3>
+        <p style="font-size:13px;color:var(--text-dim);margin:0 0 12px;">Vlož sem text výpisu zkopírovaný z internetového bankovnictví, nebo nahraj PDF / CSV. Appka ho rozdělí na příjmy, výdaje a investice a navrhne kategorie — před uložením si vše zkontroluješ a opravíš. Zpracování probíhá jen v tvém prohlížeči, nic se nikam neodesílá.</p>
+        <textarea id="imp-text" rows="6" placeholder="Např.&#10;07.07.2026  Platba kartou LIDL PRAHA  -250,00 Kč&#10;07.07.2026  Příchozí platba Výplata  32 000,00 Kč"></textarea>
+        <div class="btn-row">
+          <button type="button" class="btn" id="imp-parse">Zpracovat výpis</button>
+          <label class="file-input-label">Nahrát PDF / CSV<input type="file" id="imp-file" accept=".pdf,.csv,.txt,.tsv,application/pdf,text/csv,text/plain"></label>
+          <button type="button" class="btn secondary" id="imp-clear">Vyčistit</button>
+        </div>
+        <div id="imp-preview" style="margin-top:14px;"></div>
+        <div id="imp-learned" style="font-size:12px;color:var(--text-dim);margin-top:10px;"></div>
+      </div>
+
       <div class="card" style="margin-bottom:16px;">
         <h3>Filtry</h3>
         <div class="filters">
@@ -267,6 +280,7 @@
 <script src="firebase-config.js"></script>
 <script src="cloud.js"></script>
 <script src="charts.js"></script>
+<script src="import.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

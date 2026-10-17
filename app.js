@@ -461,6 +461,268 @@
 
   function cloudErr(e) { toast("Cloud chyba: " + e.message); }
 
+  // ---------- Import from bank statement ----------
+
+  var LEARNED_KEY = "tomasfinance.importrules";
+  var imp = { rows: [], info: null, onlyUncertain: false };
+
+  function loadLearned() {
+    try { return JSON.parse(localStorage.getItem(LEARNED_KEY)) || {}; } catch (e) { return {}; }
+  }
+
+  function saveLearned(o) {
+    try { localStorage.setItem(LEARNED_KEY, JSON.stringify(o)); } catch (e) { /* ignore */ }
+  }
+
+  function importCtx() {
+    return { categories: DB.categories, learned: loadLearned() };
+  }
+
+  function defaultEssentialFor(cat) {
+    return DEFAULT_ESSENTIAL.hasOwnProperty(cat) ? DEFAULT_ESSENTIAL[cat] : true;
+  }
+
+  function processImport(text, opts) {
+    var res = Importer.parse(text, opts);
+    var ctx = importCtx();
+    imp.info = { skipped: res.skipped, mode: res.mode };
+    imp.rows = res.rows.map(function (r) {
+      var c = Importer.categorize(r.desc, r.amount, ctx);
+      var abs = Math.abs(r.amount);
+      var dup = DB.transactions.some(function (t) {
+        return t.date === r.date && (t.type === "income") === (c.type === "income") && Math.abs(t.amount - abs) < 0.005;
+      });
+      return {
+        date: r.date, desc: r.desc, note: Importer.cleanNote(r.desc), amount: abs,
+        type: c.type, category: c.category,
+        essential: c.type === "expense" ? (c.essential != null ? c.essential : defaultEssentialFor(c.category)) : null,
+        conf: c.conf, dup: dup, transfer: c.transfer, currency: r.currency, edited: false,
+        checked: !dup && !c.transfer && !r.currency
+      };
+    });
+    renderImportPreview();
+  }
+
+  function impOpt(value, label, selected) {
+    return '<option value="' + escapeHtml(value) + '"' + (selected ? " selected" : "") + ">" + escapeHtml(label) + "</option>";
+  }
+
+  function renderLearnedInfo() {
+    var el = document.getElementById("imp-learned");
+    if (!el) return;
+    var n = Object.keys(loadLearned()).length;
+    el.innerHTML = n
+      ? 'Naučená pravidla z tvých oprav: ' + n + ' · <a href="#" data-act="clear-learned" style="color:var(--accent);">smazat</a>'
+      : "Když v náhledu něco opravíš, appka si to zapamatuje a příště to rovnou zařadí správně.";
+  }
+
+  function importSummaryHtml() {
+    var c = { income: 0, expense: 0, investment: 0 }, unsure = 0, dups = 0, sel = 0;
+    imp.rows.forEach(function (r) {
+      c[r.type]++;
+      if (r.conf === "guess") unsure++;
+      if (r.dup) dups++;
+      if (r.checked) sel++;
+    });
+    return "Nalezeno <b>" + imp.rows.length + "</b> položek (" + c.expense + " výdajů, " + c.income + " příjmů, " + c.investment + " investic)" +
+      (unsure ? ' · <span style="color:var(--essential);">' + unsure + " k zkontrolování</span>" : "") +
+      (dups ? ' · <span style="color:var(--waste);">' + dups + " možných duplikátů</span>" : "") +
+      (imp.info && imp.info.skipped ? " · přeskočeno řádků: " + imp.info.skipped : "") +
+      ' · vybráno <b id="imp-sel-count">' + sel + "</b>";
+  }
+
+  function renderImportPreview() {
+    var box = document.getElementById("imp-preview");
+    renderLearnedInfo();
+    if (!imp.info) { box.innerHTML = ""; return; }
+    if (!imp.rows.length) {
+      box.innerHTML = '<div class="tip">Nepodařilo se najít žádné transakce. U každé položky musí být datum (např. 07.07.2026) a částka (např. -250,00). Zkus zkopírovat přímo tabulku pohybů, nebo exportovat CSV z bankovnictví.</div>';
+      return;
+    }
+    var rowsHtml = imp.rows.map(function (r, i) {
+      if (imp.onlyUncertain && r.conf !== "guess" && !r.dup && !r.transfer && !r.currency) return "";
+      var cats = DB.categories[r.type] || [];
+      if (cats.indexOf(r.category) === -1) cats = cats.concat([r.category]);
+      var badges = "";
+      if (r.conf === "guess") badges += '<span class="badge warn">zkontroluj</span> ';
+      if (r.conf === "learned") badges += '<span class="badge good">naučeno</span> ';
+      if (r.dup) badges += '<span class="badge bad">možný duplikát</span> ';
+      if (r.transfer) badges += '<span class="badge warn">vlastní převod?</span> ';
+      if (r.currency) badges += '<span class="badge warn">' + escapeHtml(r.currency) + " – přepočti</span> ";
+      var cell = 'style="padding:6px 8px;font-size:12.5px;min-width:105px;"';
+      return '<tr' + (r.conf === "guess" ? ' style="background:rgba(243,184,85,0.06);"' : "") + ">" +
+        '<td><input type="checkbox" data-i="' + i + '" data-f="checked"' + (r.checked ? " checked" : "") + ' style="width:auto;"></td>' +
+        "<td>" + r.date + "</td>" +
+        '<td><input type="text" data-i="' + i + '" data-f="note" value="' + escapeHtml(r.note) + '" title="' + escapeHtml(r.desc) + '" style="min-width:220px;padding:6px 8px;font-size:12.5px;"></td>' +
+        '<td><select data-i="' + i + '" data-f="type" ' + cell + ">" + impOpt("income", "Příjem", r.type === "income") + impOpt("expense", "Výdaj", r.type === "expense") + impOpt("investment", "Investice", r.type === "investment") + "</select></td>" +
+        '<td><select data-i="' + i + '" data-f="category" ' + cell + ">" + cats.map(function (c) { return impOpt(c, c, c === r.category); }).join("") + "</select></td>" +
+        "<td>" + (r.type === "expense"
+          ? '<select data-i="' + i + '" data-f="essential" ' + cell + ">" + impOpt("1", "Nutné", r.essential) + impOpt("0", "Zbytečnost", !r.essential) + "</select>"
+          : "—") + "</td>" +
+        '<td><input type="number" data-i="' + i + '" data-f="amount" value="' + r.amount + '" step="0.01" min="0" style="width:105px;padding:6px 8px;font-size:12.5px;"></td>' +
+        "<td>" + badges + "</td></tr>";
+    }).join("");
+
+    box.innerHTML =
+      '<div style="font-size:13px;margin-bottom:10px;" id="imp-summary">' + importSummaryHtml() + "</div>" +
+      '<div class="btn-row" style="margin:0 0 10px;align-items:center;">' +
+      '<button type="button" class="btn secondary small" data-act="sel-all">Vybrat vše</button>' +
+      '<button type="button" class="btn secondary small" data-act="sel-none">Zrušit výběr</button>' +
+      '<button type="button" class="btn secondary small" data-act="flip-all" title="Použij, když výpis neobsahuje znaménka a vše vyšlo jako příjem/výdaj">Obrátit příjem ↔ výdaj</button>' +
+      '<label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px;"><input type="checkbox" data-f="onlyUncertain"' + (imp.onlyUncertain ? " checked" : "") + ' style="width:auto;"> Jen k zkontrolování</label>' +
+      "</div>" +
+      '<div class="table-wrap"><table><thead><tr><th></th><th>Datum</th><th>Popis</th><th>Typ</th><th>Kategorie</th><th>Klasifikace</th><th>Částka (Kč)</th><th>Stav</th></tr></thead><tbody>' + rowsHtml + "</tbody></table></div>" +
+      '<div class="btn-row" style="margin-top:12px;">' +
+      '<button type="button" class="btn" data-act="commit">Importovat vybrané</button>' +
+      '<button type="button" class="btn secondary" data-act="cancel">Zrušit</button>' +
+      "</div>";
+  }
+
+  function onImportChange(e) {
+    var el = e.target, f = el.dataset.f;
+    if (!f) return;
+    if (f === "onlyUncertain") { imp.onlyUncertain = el.checked; renderImportPreview(); return; }
+    var r = imp.rows[parseInt(el.dataset.i, 10)];
+    if (!r) return;
+    if (f === "checked") {
+      r.checked = el.checked;
+      document.getElementById("imp-sel-count").textContent = imp.rows.filter(function (x) { return x.checked; }).length;
+    } else if (f === "note") {
+      r.note = el.value;
+    } else if (f === "amount") {
+      r.amount = Math.abs(parseFloat(el.value)) || 0;
+    } else if (f === "type") {
+      r.type = el.value;
+      var s = Importer.suggestFor(r.desc, r.type, importCtx());
+      r.category = s.category;
+      r.conf = "edited";
+      r.essential = r.type === "expense" ? defaultEssentialFor(r.category) : null;
+      r.edited = true;
+      renderImportPreview();
+    } else if (f === "category") {
+      r.category = el.value;
+      r.conf = "edited";
+      if (r.type === "expense") r.essential = defaultEssentialFor(r.category);
+      r.edited = true;
+      renderImportPreview();
+    } else if (f === "essential") {
+      r.essential = el.value === "1";
+      r.edited = true;
+    }
+  }
+
+  function flipImportRows() {
+    var ctx = importCtx();
+    imp.rows.forEach(function (r) {
+      r.type = r.type === "income" ? "expense" : "income";
+      var s = Importer.suggestFor(r.desc, r.type, ctx);
+      r.category = s.category;
+      r.conf = s.conf;
+      r.essential = r.type === "expense" ? defaultEssentialFor(r.category) : null;
+    });
+    renderImportPreview();
+  }
+
+  function commitImport() {
+    var chosen = imp.rows.filter(function (r) { return r.checked && r.amount > 0; });
+    if (!chosen.length) { toast("Nic není vybráno k importu"); return; }
+    var learned = loadLearned(), nLearn = 0, added = [];
+    chosen.forEach(function (r) {
+      var t = { id: uid(), type: r.type, date: r.date, category: r.category, amount: r.amount, note: r.note || "", essential: r.type === "expense" ? !!r.essential : null };
+      DB.transactions.push(t);
+      added.push(t);
+      if (r.edited) {
+        var k = Importer.keyOf(r.desc);
+        if (k) { learned[k] = { type: r.type, category: r.category, essential: t.essential }; nLearn++; }
+      }
+    });
+    saveDB();
+    saveLearned(learned);
+    if (Cloud.isConnected()) added.forEach(function (t) { Cloud.upsertTransaction(t).catch(cloudErr); });
+    imp.rows = [];
+    imp.info = null;
+    document.getElementById("imp-text").value = "";
+    renderImportPreview();
+    renderActiveTab();
+    toast("Importováno " + added.length + " transakcí" + (nLearn ? " · zapamatováno pravidel: " + nLearn : ""));
+  }
+
+  function showImportMessage(html) {
+    imp.rows = [];
+    imp.info = null;
+    document.getElementById("imp-preview").innerHTML = '<div class="tip">' + html + "</div>";
+  }
+
+  function readPdfFile(file) {
+    showImportMessage("Čtu PDF…");
+    var reader = new FileReader();
+    reader.onload = function () {
+      Importer.pdfToText(reader.result).then(function (text) {
+        if (!text.trim()) {
+          showImportMessage("V tomhle PDF jsem nenašel žádný text — pravděpodobně jde o sken (obrázek). Zkus v bankovnictví jiný export (CSV), nebo text z PDF zkopíruj ručně.");
+          return;
+        }
+        document.getElementById("imp-text").value = text;
+        processImport(text, { pdf: true });
+      }).catch(function (err) {
+        var msg = err && err.name === "PasswordException"
+          ? "PDF je chráněné heslem. Otevři ho ve čtečce PDF, zkopíruj text a vlož ho do pole výše."
+          : (err && err.message) ? err.message : "PDF se nepodařilo přečíst.";
+        showImportMessage(escapeHtml(msg));
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function readStatementFile(file) {
+    if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) { readPdfFile(file); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var buf = reader.result, text;
+      try { text = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+      catch (e) {
+        try { text = new TextDecoder("windows-1250").decode(buf); } catch (e2) { text = new TextDecoder().decode(buf); }
+      }
+      document.getElementById("imp-text").value = text;
+      processImport(text);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function initImport() {
+    document.getElementById("imp-parse").addEventListener("click", function () {
+      var text = document.getElementById("imp-text").value;
+      if (!text.trim()) { toast("Nejdřív vlož text výpisu"); return; }
+      processImport(text);
+    });
+    document.getElementById("imp-clear").addEventListener("click", function () {
+      imp.rows = []; imp.info = null;
+      document.getElementById("imp-text").value = "";
+      renderImportPreview();
+    });
+    document.getElementById("imp-file").addEventListener("change", function (e) {
+      if (e.target.files[0]) readStatementFile(e.target.files[0]);
+      e.target.value = "";
+    });
+    var card = document.getElementById("import-card");
+    card.addEventListener("change", onImportChange);
+    card.addEventListener("click", function (e) {
+      var el = e.target.closest("[data-act]");
+      if (!el) return;
+      var act = el.dataset.act;
+      if (act === "clear-learned") {
+        e.preventDefault();
+        if (confirm("Smazat všechna naučená pravidla? Appka pak bude kategorie hádat znovu od nuly.")) { saveLearned({}); renderLearnedInfo(); }
+      } else if (act === "sel-all" || act === "sel-none") {
+        imp.rows.forEach(function (r) { r.checked = act === "sel-all"; });
+        renderImportPreview();
+      } else if (act === "flip-all") flipImportRows();
+      else if (act === "commit") commitImport();
+      else if (act === "cancel") { imp.rows = []; imp.info = null; renderImportPreview(); }
+    });
+    renderLearnedInfo();
+  }
+
   // ---------- Compare tab ----------
 
   function renderCompareTab() {
@@ -793,6 +1055,8 @@
       e.target.value = "";
     });
     document.getElementById("btn-reset").addEventListener("click", resetAllData);
+
+    initImport();
 
     resetForm();
     renderActiveTab();
