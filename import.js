@@ -402,11 +402,11 @@ var Importer = (function () {
 
   var EXPENSE_RULES = compile([
     ["Předplatné", ["netflix", "spotify", "youtube", "google one", "google storage", "google *", "apple.com/bill", "itunes", "icloud", "disney", "hbo", "max.com", "prime video", "amazon prime", "audible", "openai", "chatgpt", "anthropic", "claude.ai", "github", "dropbox", "microsoft", "adobe", "patreon", "skyshowtime", "voyo", "oneplay", "tidal", "deezer", "canva", "notion", "duolingo", "predplatne"]],
-    ["Jídlo", ["lidl", "albert", "billa", "kaufland", "tesco", "penny", "globus", "coop", "potraviny", "rohlik", "kosik", "mcdonald", "kfc", "burger king", "restaurace", "pizz", "bufet", "pekarna", "pekarstvi", "cukrarna", "starbucks", "costa coffee", "cafe", "kavarna", "wolt", "foodora", "bolt food", "zabka", "hruska", "tamda", "makro", "jip", "delikatesy", "bistro", "sushi", "kebab", "dominos", "subway", "lahudky", "vinotek", "popeyes", "bageterie", "vending", "sbx", "delikomat", "restia", "pikolik", "kramek"]],
-    ["Doprava", ["benzina", "shell", "omv", "mol", "eurooil", "orlen", "tank", "parkov", "parking", "mhd", "dpp", "dpmb", "dpo", "idos", "regiojet", "leo express", "ceske drahy", "cd.cz", "uber", "bolt", "lime", "tier", "nextbike", "mytne", "dalnicni", "stk", "autoskola", "autodoplnky", "pneu", "taxi", "liftago", "flixbus", "ryanair", "wizz", "letenka", "letiste", "jizdenka", "litacka", "renfe", "csad", "avanza", "malaguena"]],
+    ["Jídlo", ["lidl", "albert", "billa", "kaufland", "tesco", "penny", "globus", "coop", "potraviny", "rohlik", "kosik", "mcdonald", "kfc", "burger king", "restaurace", "pizz", "bufet", "pekarna", "pekarstvi", "cukrarna", "starbucks", "costa coffee", "cafe", "kavarna", "wolt", "foodora", "bolt food", "zabka", "hruska", "tamda", "makro", "jip", "delikatesy", "bistro", "sushi", "kebab", "dominos", "subway", "lahudky", "vinotek", "popeyes", "bageterie", "vending", "sbx", "delikomat", "restia", "pikolik", "kramek", "restaurant", "lokal", "burger"]],
+    ["Doprava", ["benzina", "shell", "omv", "mol", "eurooil", "orlen", "tank", "parkov", "parking", "mhd", "dpp", "dpmb", "dpo", "idos", "regiojet", "leo express", "ceske drahy", "cd.cz", "uber", "bolt", "lime", "tier", "nextbike", "mytne", "dalnicni", "stk", "autoskola", "autodoplnky", "pneu", "taxi", "liftago", "flixbus", "ryanair", "wizz", "letenka", "letiste", "jizdenka", "litacka", "renfe", "csad", "avanza", "malaguena", "dalnice"]],
     ["Bydlení", ["najem", "najemne", "elektrina", "cez", "eon", "e.on", "innogy", "prazska energetika", "plyn", "vodarna", "vodovod", "svj", "fond oprav", "internet", "upc", "ikea", "hornbach", "obi", "jysk", "bauhaus", "pojisteni domacnosti", "odpady", "teplo"]],
     ["Zdraví", ["lekarna", "benu", "dr.max", "dr max", "drmax", "pilulka", "poliklinika", "lekar", "zubar", "nemocnice", "ordinace", "fitness", "fitko", "gym", "multisport", "holmes place", "repsport", "optika", "vzp", "kosmetika", "masaz", "fyzio"]],
-    ["Zábava", ["kino", "cinema", "cinestar", "divadlo", "steam", "playstation", "xbox", "nintendo", "epic games", "ticketportal", "goout", "ticketmaster", "bowling", "sazka", "tipsport", "fortuna", "chance", "pub", "klub", "bar", "hospoda", "vinarna", "pivnice", "koncert", "festival", "twitch", "aquapark", "zoo", "muzeum", "herna", "gapagroup", "casino", "kasino"]],
+    ["Zábava", ["kino", "cinema", "cinestar", "divadlo", "steam", "playstation", "xbox", "nintendo", "epic games", "ticketportal", "goout", "ticketmaster", "bowling", "sazka", "tipsport", "fortuna", "chance", "pub", "klub", "bar", "hospoda", "vinarna", "pivnice", "koncert", "festival", "twitch", "aquapark", "zoo", "muzeum", "herna", "gapagroup", "casino", "kasino", "betano"]],
     ["Oblečení", ["zalando", "h&m", "hm.com", "zara", "reserved", "c&a", "about you", "answear", "decathlon", "nike", "adidas", "deichmann", "ccc", "sinsay", "primark", "new yorker", "pull&bear", "bershka", "footshop", "vinted", "lindex", "cropp", "pepco"]]
   ]);
 
@@ -422,7 +422,7 @@ var Importer = (function () {
     ["Spoření/rezerva", ["sporic", "stavebni sporeni", "penzijni", "penzijko", "conseq", "nn penzijni", "amundi", "pension"]]
   ]);
 
-  var TRANSFER_RE = /vlastni (ucet|uc)|mezi vlastnimi|prevod mezi|own account|internal transfer|na sporici|ze sporiciho|sporici ucet|revolut\*\*/;
+  var TRANSFER_RE = /vlastni (ucet|uc)|mezi vlastnimi|prevod mezi|own account|internal transfer|na sporici|ze sporiciho|sporici ucet|revolut\*\*|(^| )revolut( |$)/;
 
   var STOPWORDS = ["platba", "kartou", "karta", "nakup", "transakce", "prevod", "uhrada", "odchozi", "prichozi", "bezhotovostni", "domaci", "platebni", "trvaly", "prikaz", "inkaso", "pos", "internetova", "praha", "brno", "ostrava", "plzen", "czk", "cz", "czech", "republic", "pro", "bez", "datum"];
 
